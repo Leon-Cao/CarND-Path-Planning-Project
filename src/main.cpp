@@ -14,13 +14,19 @@ using nlohmann::json;
 using std::string;
 using std::vector;
 
+#define TOTAL_LANES					3
+#define RIGHTEST_LANE_IDX			0
+#define LEFTEST_LANE_IDX			2
+#define LANE_WIDTH					4
+#define MIDDLE_OF_LANE				2
+#define MIDDLE_OF_LANE_BAIS			0.5
+
 #define NORMAL_ACCELERATE_VEL		0.3
 #define NORMAL_JERK					0.224
 //#define MAX_JERK					NORMAL_ACCELERATE_VEL*4
 #define MAX_RATE_LIMITATION			49.9
 #define TARGET_RATE					(MAX_RATE_LIMITATION - NORMAL_ACCELERATE_VEL)
 #define MAX_DISTANCE				999999.0
-#define LANE_WIDTH					4
 #define FRONT_LIMITED_DISTANCE		30
 #define BACK_LIMITED_DISTANCE		10
 
@@ -71,12 +77,11 @@ int main() {
     map_waypoints_dy.push_back(d_y);
   }
 
-  double ref_vel = 0.00;
-  int lane = 1;
-  std::string state = "KL";
+  double vCarVel = 0.00;
+  int vCarCurrentLane = 1;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy, &ref_vel, &lane, &state]
+               &map_waypoints_dx,&map_waypoints_dy, &vCarVel, &vCarCurrentLane]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode){
     // "42" at the start of the message means there's a websocket message event.
@@ -133,26 +138,20 @@ int main() {
           bool bLeftBackOK = true;
           bool bRightFrontOK = true;
           bool bRightBackOK = true;
-          int vLeftLane = lane - 1;
-          int vRightLane = lane + 1;
+          int vLeftLane = vCarCurrentLane - 1;
+          int vRightLane = vCarCurrentLane + 1;
           double vLeftClosestCar_s = MAX_DISTANCE;
           double vRightClosestCar_s = MAX_DISTANCE;
           bool vChangingLine = false;
 
-  		  vLeftLane = vLeftLane > 0 ? vLeftLane:0; 
-		  vRightLane = vRightLane < 2 ? vRightLane:2;
-
-		  // car_d is out of current lane
-          if (car_d > ( LANE_WIDTH * (lane + 1)) || car_d < (LANE_WIDTH * lane))
-          {
-            vChangingLine = true;
-          }
+  		  vLeftLane = vLeftLane > RIGHTEST_LANE_IDX ? vLeftLane:RIGHTEST_LANE_IDX; 
+		  vRightLane = vRightLane < LEFTEST_LANE_IDX? vRightLane:LEFTEST_LANE_IDX;
 
           for (int i = 0; i < sensor_fusion.size(); i++)
           {
             float vOtherCar_d = sensor_fusion[i][SENSOr_FUSION_IDX_D];
 			// same lane cars
-            if (vOtherCar_d < (LANE_WIDTH * (lane + 1)) && vOtherCar_d > (LANE_WIDTH * lane))
+            if (vOtherCar_d < (LANE_WIDTH * (vCarCurrentLane + 1)) && vOtherCar_d > (LANE_WIDTH * vCarCurrentLane))
             {
               double vx = sensor_fusion[i][SENSOr_FUSION_IDX_VX];
               double vy = sensor_fusion[i][SENSOr_FUSION_IDX_VY];
@@ -172,7 +171,7 @@ int main() {
 			  }
             }
 			// Left Lane Cars
-            if((vLeftLane < lane) && 
+            if((vLeftLane < vCarCurrentLane) && 
 				(vOtherCar_d < (LANE_WIDTH * (vLeftLane + 1)) && vOtherCar_d > (LANE_WIDTH * vLeftLane)))
             {
               double vx = sensor_fusion[i][SENSOr_FUSION_IDX_VX];
@@ -225,11 +224,17 @@ int main() {
                 bRightBackOK = false;
               }
             }
+          }//for
+
+		  // car_d is out of current lane
+          if (car_d > ( LANE_WIDTH * (vCarCurrentLane + 1)) || car_d < (LANE_WIDTH * vCarCurrentLane))
+          {
+            vChangingLine = true;
           }
 
           if (bTooClose2FrontWarning)
           {
-            ref_vel -= NORMAL_JERK;
+            vCarVel -= NORMAL_JERK;
             std::cout << std::endl;
             std::cout << "Left Front OK " << bLeftFrontOK << std::endl;
             std::cout << "Left Back OK " << bLeftBackOK << std::endl;
@@ -242,134 +247,130 @@ int main() {
 			// Change lane
             if ((vChangingLine == false) && (vLeftClosestCar_s >= vRightClosestCar_s))
             {
-              if ((vLeftLane < lane) && (bLeftFrontOK == true && bLeftBackOK == true))
+              if ((vLeftLane < vCarCurrentLane) && (bLeftFrontOK == true && bLeftBackOK == true))
               {
                   std::cout << "<<< Turn Left <<<" << std::endl;
-                  lane = vLeftLane;
+                  vCarCurrentLane = vLeftLane;
               }
-              else if ((vRightLane > lane) && (bRightFrontOK == true && bRightBackOK == true))
+              else if ((vRightLane > vCarCurrentLane) && (bRightFrontOK == true && bRightBackOK == true))
               {
               	  std::cout << ">>> Turn Right >>>" << std::endl;
-                  lane = vRightLane;
+                  vCarCurrentLane = vRightLane;
               }
             }
             else if ((vChangingLine == false) && (vLeftClosestCar_s < vRightClosestCar_s))
             {
-              if ((vRightLane > lane) && (bRightFrontOK == true && bRightBackOK == true))
+              if ((vRightLane > vCarCurrentLane) && (bRightFrontOK == true && bRightBackOK == true))
               {
               	  std::cout << ">>> Turn Right >>>" << std::endl;
-                  lane = vRightLane;
+                  vCarCurrentLane = vRightLane;
               }
-              else if ((vLeftLane < lane) && (bLeftFrontOK == true && bLeftBackOK == true))
+              else if ((vLeftLane < vCarCurrentLane) && (bLeftFrontOK == true && bLeftBackOK == true))
               {
                   std::cout << "<<< Turn Left <<<" << std::endl;
-                  lane = vLeftLane;
+                  vCarCurrentLane = vLeftLane;
               }
             }
           }
-          else if ((ref_vel < TARGET_RATE) || (bTooClose2BackWarning == true))
+          else if ((vCarVel < TARGET_RATE) || (bTooClose2BackWarning == true))
           {          	
-            ref_vel += NORMAL_ACCELERATE_VEL;
+            vCarVel += NORMAL_ACCELERATE_VEL;
 			if(bTooClose2BackWarning == true)
 			{
-			  ref_vel += NORMAL_ACCELERATE_VEL;
+			  vCarVel = (vCarVel + NORMAL_ACCELERATE_VEL) >= MAX_RATE_LIMITATION?
+			  			 MAX_RATE_LIMITATION: (vCarVel+NORMAL_ACCELERATE_VEL);
 			}
           }
 
-          vector<double> ptsx;
-          vector<double> ptsy;
-          double ref_x = car_x;
-          double ref_y = car_y;
-          double ref_yaw = deg2rad(car_yaw);
+          vector<double> vPtsX;
+          vector<double> vPtsY;
+          double vRefX = car_x;
+          double vRefY = car_y;
+          double vRefYaw = deg2rad(car_yaw);
 
           if (prev_size < 2)
           {
-            double prev_car_x = car_x - cos(car_yaw);
-            double prev_car_y = car_y - sin(car_yaw);
-            ptsx.push_back(prev_car_x);
-            ptsx.push_back(car_x);
-            ptsy.push_back(prev_car_y);
-            ptsy.push_back(car_y);
+            vPtsX.push_back(car_x - cos(car_yaw));
+            vPtsX.push_back(car_x);
+            vPtsY.push_back(car_y - sin(car_yaw));
+            vPtsY.push_back(car_y);
           }
           else
           {
-            ref_x = previous_path_x[prev_size - 1];
-            ref_y = previous_path_y[prev_size - 1];
+            vRefX = previous_path_x[prev_size - 1];
+            vRefY = previous_path_y[prev_size - 1];
 
-            double ref_x_prev = previous_path_x[prev_size - 2];
-            double ref_y_prev = previous_path_y[prev_size - 2];
-            ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
-            ptsx.push_back(ref_x_prev);
-            ptsx.push_back(ref_x);
+            double vRefXPrev = previous_path_x[prev_size - 2];
+            double vRefYPrev = previous_path_y[prev_size - 2];
+            vRefYaw = atan2(vRefY - vRefYPrev, vRefX - vRefXPrev);
+            vPtsX.push_back(vRefXPrev);
+            vPtsX.push_back(vRefX);
 
-            ptsy.push_back(ref_y_prev);
-            ptsy.push_back(ref_y);
+            vPtsY.push_back(vRefYPrev);
+            vPtsY.push_back(vRefY);
           }
 
-          int mylane = (2 + (4 * lane));
-          //std::cout << "mylane " << mylane << std::endl;
-          vector<double> next_wp0 = getXY(car_s + 30, mylane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> next_wp1 = getXY(car_s + 60, mylane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> next_wp2 = getXY(car_s + 90, mylane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          int vMyLane = (MIDDLE_OF_LANE + (LANE_WIDTH * vCarCurrentLane) + MIDDLE_OF_LANE_BAIS);
 
-          ptsx.push_back(next_wp0[0]);
-          ptsx.push_back(next_wp1[0]);
-          ptsx.push_back(next_wp2[0]);
+          vector<double> vNextWp0 = getXY(car_s + 30, vMyLane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> vNextWp1 = getXY(car_s + 60, vMyLane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> vNextWp2 = getXY(car_s + 90, vMyLane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
-          ptsy.push_back(next_wp0[1]);
-          ptsy.push_back(next_wp1[1]);
-          ptsy.push_back(next_wp2[1]);
+          vPtsX.push_back(vNextWp0[0]);
+          vPtsX.push_back(vNextWp1[0]);
+          vPtsX.push_back(vNextWp2[0]);
 
-          for (int i = 0; i < ptsx.size(); i++)
+          vPtsY.push_back(vNextWp0[1]);
+          vPtsY.push_back(vNextWp1[1]);
+          vPtsY.push_back(vNextWp2[1]);
+
+          for (int i = 0; i < vPtsX.size(); i++)
           {
-            // std::cout << "ptsx" << ptsx[i] << std::endl;
-            // std::cout << "ptsy" << ptsy[i] << std::endl;
-
-            double shift_x = ptsx[i] - ref_x;
-            double shift_y = ptsy[i] - ref_y;
-            ptsx[i] = (shift_x * cos(0 - ref_yaw) - shift_y * sin(0 - ref_yaw));
-            ptsy[i] = (shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw));
+            double vShiftX = vPtsX[i] - vRefX;
+            double vShiftY = vPtsY[i] - vRefY;
+            vPtsX[i] = (vShiftX * cos(0 - vRefYaw) - vShiftY * sin(0 - vRefYaw));
+            vPtsY[i] = (vShiftX * sin(0 - vRefYaw) + vShiftY * cos(0 - vRefYaw));
           }
 
           tk::spline s;
-          s.set_points(ptsx, ptsy);
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
+          s.set_points(vPtsX, vPtsY);
+          vector<double> vNextXVals;
+          vector<double> vNextYVals;
 
           for (int i = 0; i < previous_path_x.size(); i++)
           {
-            next_x_vals.push_back(previous_path_x[i]);
-            next_y_vals.push_back(previous_path_y[i]);
+            vNextXVals.push_back(previous_path_x[i]);
+            vNextYVals.push_back(previous_path_y[i]);
           }
 
-          double target_x = 30.0;
-          double target_y = s(target_x);
-          double target_dist = sqrt((target_x) * (target_x) + (target_y) * (target_y));
+          double vTargetX = 30.0;
+          double vTargetY = s(vTargetX);
+          double vTargetDist = sqrt((vTargetX) * (vTargetX) + (vTargetY) * (vTargetY));
 
-          double x_add_on = 0;
+          double vXBais = 0;
 
           for (int i = 1; i <= 50 - previous_path_x.size(); i++)
           {
-            double N = (target_dist / (.02 * ref_vel / 2.24));
-            double x_point = x_add_on + (target_x) / N;
-            double y_point = s(x_point);
-            x_add_on = x_point;
+            double N = (vTargetDist / (.02 * vCarVel / 2.24));
+            double vXPoint = vXBais + (vTargetX) / N;
+            double vYPoint = s(vXPoint);
+            vXBais = vXPoint;
 
-            double x_ref = x_point;
-            double y_ref = y_point;
+            double vTmpX = vXPoint;
+            double vTmpY = vYPoint;
 
-            x_point = (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
-            y_point = (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
+            vXPoint = (vTmpX * cos(vRefYaw) - vTmpY * sin(vRefYaw));
+            vYPoint = (vTmpX * sin(vRefYaw) + vTmpY * cos(vRefYaw));
 
-            x_point += ref_x;
-            y_point += ref_y;
+            vXPoint += vRefX;
+            vYPoint += vRefY;
 
-            next_x_vals.push_back(x_point);
-            next_y_vals.push_back(y_point);
+            vNextXVals.push_back(vXPoint);
+            vNextYVals.push_back(vYPoint);
           }
 
-          msgJson["next_x"] = next_x_vals;
-          msgJson["next_y"] = next_y_vals;
+          msgJson["next_x"] = vNextXVals;
+          msgJson["next_y"] = vNextYVals;
 
           auto msg = "42[\"control\","+ msgJson.dump()+"]";
 

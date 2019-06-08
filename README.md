@@ -32,6 +32,10 @@
 ### The car is able to change lanes
   * Yes, the car can change lanes without any issues. 
 
-### There is a reflection on how to generate paths.
-  * 
+### Reflection
+  * Line#17 to Line#41 define the constant and enum for SENSOR FUSION Index. So, it is easy to adjust parameters and get more readable for code.
+  * Line#80 to Line#86, read Car's velocity and lane. 
+  * Line#135 to Line#148, initialize local variants to avoid collision and left turn or right turn. * Line#150 to Line#227, check all others cars' status and adjust if it is safe to turn right or turn left. And also checking if it is too close to front car and back car in same lane.
+  * Line#229 to Line#284, to determine if need accelarate or break or turn left or turn right.
+  * Line#285 to Line#370, trajectory generation. The trajectory evaluation takes into account the following things: cars coordinates, speed and lane occupation and previous path points (for trajectory continuity, efficiency and accuracy).
 
